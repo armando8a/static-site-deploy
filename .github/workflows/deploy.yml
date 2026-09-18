@@ -1,0 +1,47 @@
+name: Deploy static site
+
+on:
+  workflow_call:
+    inputs:
+      subdomain:
+        description: "Subdomain under 8ai-projects.fyi to deploy to, e.g. 'resume'"
+        required: true
+        type: string
+      build-dir:
+        description: "Directory (relative to repo root) whose contents get published"
+        required: false
+        type: string
+        default: "."
+    secrets:
+      DEPLOY_SSH_HOST:
+        required: true
+      DEPLOY_SSH_USER:
+        required: true
+      DEPLOY_SSH_KEY:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deploy SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload site files over SFTP
+        run: |
+          set -e
+          cd "${{ inputs.build-dir }}"
+          {
+            echo "-mkdir sites/${{ inputs.subdomain }}"
+            echo "cd sites/${{ inputs.subdomain }}"
+            for entry in *; do
+              printf 'put -r %q\n' "$entry"
+            done
+          } | sftp -o StrictHostKeyChecking=yes -i ~/.ssh/deploy_key \
+                "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}"
